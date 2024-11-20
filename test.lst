@@ -1,0 +1,595 @@
+
+; ******** Source: test.b
+     1                          ; LC256 Ramtest - Test $0010
+     2                          ; for ACME assembling by Vossi 11/2024, last update 11/2024
+     3                          ; v1.0 initial
+     4                          !cpu 65c02	; 6502, 6510, 65c02, 65816
+     5                          !ct scr		; Standard text/char conversion table -> pet = petscii
+     6                          !to "test.bin", plain
+
+; ******** Source: defines.b
+     1                          ; LC256 Ramtest Defines
+     2                          ; for ACME assembling by Vossi 11/2024, last update 11/2024
+     3                          ; v1.0 initial
+     4                          ; switches
+     5                          CLOCK = 4		; CPU clock in MHz for VDP waits
+     6                          ; vdp
+     7                          PAL = 1			; PAL=1, NTSC=0		selects V9938/58 PAL RGB-output, NTSC has a higher picture
+     8                          ; VDP speed parameter - don't change!
+     9                          WAIT12 = 1 ; 2		; us 1. - 2. byte VDP
+    10                          WAIT23 = 2 ; 5		; us 2. - 3. byte VDP
+    11                          WAITVRAM1 = 3		; us vram 1.access
+    12                          WAITVRAM = 6		; us vram loop (text mode 1+2: 6, mode 6+7: 5)
+    13                          ; ***************************************** CONSTANTS *********************************************
+    14                          FILL		= $00		; fills free memory areas with $00
+    15                          V_NULL		= $ff		; VDP string End
+    16                          ; colors
+    17                          BLUE		= 6
+    18                          WHITE		= 1
+    19                          ; VDP defines
+    20                          VDPREG1         = $10           ; VDP reg 1 value (mode bits M1+M2, screen disabled)
+    21                          VDPREG9         = $00 | PAL*2   ; VDP reg 9 value ($00 = NTSC, $02 = PAL / 192 lines)
+    22                          VDPREG18        = $0d           ; VDP reg 18 value (V/H screen adjust, $0d = Sony PVM 9")
+    23                          FONTPAGES	= $08		; fontdata size in pages
+    24                          ; colors
+    25                          COLOR		= WHITE
+    26                          BGRCOLOR	= BLUE
+    27                          ; screen values
+    28                          COLS		= 40		; screen columns
+    29                          ROWS		= 24		; used lines
+    30                          ; ***************************************** ADDRESSES *********************************************
+    31                          ; I/O addresses
+    32                          VDPWriteAdr	= $dc00		; Port#0 RamWrite, #1 Control, #2 Palette, #3 Indirect
+    33                          VDPReadAdr	= $dc80		; Port#0 RamRead, #1 Status
+    34                          ; VDP ports
+    35                          !addr	VDPRamWrite	= VDPWriteAdr
+    36                          !addr	VDPControl	= VDPWriteAdr+1
+    37                          !addr	VDPPalette	= VDPWriteAdr+2
+    38                          !addr	VDPIndirect	= VDPWriteAdr+3
+    39                          !addr	VDPRamRead	= VDPReadAdr
+    40                          !addr	VDPStatus	= VDPReadAdr+1
+    41                          PatternTable		= $0800		; font
+    42                          Screen			= $0000
+    43                          ; 6522 VIA2 - MMU, IEC, USB RXF/TXE, Restore
+    44                          	prb	= $0		; Port reg b
+    45                          	pcr	= $c		; peripheral control register
+    46                          !addr	via2	= $de40
+    47                          !addr	mmu	= via2+prb	; VIA2 port B MMU register
+    48                          ; ***************************************** ZERO PAGE *********************************************
+    49                          ; Variables
+    50                          *=$0000
+    51                          !addr	result_pointer			; pointer to result screen position
+    52                          !addr	source_pointer	*=*+2		; pointer for code copy 
+    53                          !addr	temp		*=*+1		; temp
+    54                          !addr	counter		*=*+1		; counter
+    55                          !addr	pointer		*=*+2		; pointer
+    56                          !addr	TESTCODE	=*		; start of testcode
+
+; ******** Source: test.b
+
+; ******** Source: macros.b
+     1                          ; LC256 Ramtest Macros
+     2                          ; for ACME assembling by Vossi 11/2024, last update 11/2024
+     3                          ; v1.0 initial
+     4                          ; ******************************************* MACROS **********************************************
+     5                          !macro inc16 .a{		; *** increase 16bit
+     6                          	inc .a
+     7                          	bne .j
+     8                          	inc .a+1
+     9                          .j}
+    10                          !macro st16i .a, .v{		; *** store 16bit immediate to address
+    11                          	lda # <.v
+    12                          	sta .a
+    13                          	lda # >.v
+    14                          	sta .a+1
+    15                          }
+    16                          ; VDP macros
+    17                          !macro VdpWait .u, .c{		; *** us wait - cycles already present - for VDP access
+    18                          	!set .t = (.u*10-(.c*10/CLOCK))*CLOCK/20
+    19                          	!do while .t > 0{
+    20                          		nop			; each nop needs 2 cycles
+    21                          		!set .t = .t -1}
+    22                          }
+    23                          !macro VdpSetReg .r{		; *** set VDP Register
+    24                          	sta VDPControl			; first writes data in A to control port #1
+    25                          	lda #.r | $80			; writes register no. with bit#7 = 1 to Port #1
+    26                          	+VdpWait WAIT12,5-1
+    27                          	sta VDPControl
+    28                          }
+    29                          !macro VdpWriteAddress{		; *** set VDP write vram address-pointer to AAXX
+    30                          	stx VDPControl
+    31                          	ora #$40			; bit#6 = 1 write
+    32                          	+VdpWait WAIT12,5-1
+    33                          	sta VDPControl
+
+; ******** Source: test.b
+     9                          ; ***************************************** TEST CODE *********************************************
+    10                          !initmem FILL
+    11                          !zone testcode
+    12                          *= TESTCODE
+    13  0006 a2fe               	ldx #$fe			; reset stack
+    14  0008 9a                 	txs
+    15                          
+    16  0009 a2a9               Test:	ldx #<(Screen+4*COLS+9)		; reset to first result screen position
+    17  000b 8600               	stx result_pointer 
+    18  000d a200               	ldx #>(Screen+4*COLS+9)
+    19  000f 8601               	stx result_pointer+1
+    20                          
+    21  0011 a900               tstram0:lda #0
+    22  0013 8502               	sta temp			; clear test flag (0=ok)
+    23                          ; TEST $00, $ff
+    24  0015 a9008504a9048505   	+st16i pointer, $0400		; ramtest start
+    25  001d a000               	ldy #0
+    26  001f a900               r0tst00:lda #$00			; test byte $00
+    27  0021 9104               	sta (pointer),y
+    28  0023 d104               	cmp (pointer),y
+    29  0025 f004               	beq r0tstff			; ok
+    30  0027 a980               	lda #$80
+    31  0029 8502               	sta temp			; bad flag
+    32  002b a9ff               r0tstff:lda #$ff			; test byte $ff
+    33  002d 9104               	sta (pointer),y
+    34  002f d104               	cmp (pointer),y
+    35  0031 f004               	beq r0t00nx			; ok
+    36  0033 a980               	lda #$80
+    37  0035 8502               	sta temp			; bad flag
+    38  0037 c8                 r0t00nx:iny
+    39  0038 d0e5               	bne r0tst00			; next byte
+    40  003a e605               	inc pointer+1			; inc page
+    41  003c a505               	lda pointer+1
+    42  003e c980               	cmp #$80			; finished RAM0?
+    43  0040 d0dd               	bne r0tst00			; no.. next page
+    44                          ; TEST $5a, $a5
+    45  0042 a9008504a9048505   	+st16i pointer, $0400		; ramtest start
+    46                          	; .y already 0
+    47  004a a95a               r0tst5a:lda #$5a			; test byte $5a
+    48  004c 9104               	sta (pointer),y
+    49  004e d104               	cmp (pointer),y
+    50  0050 f004               	beq r0tsta5			; ok
+    51  0052 a980               	lda #$80
+    52  0054 8502               	sta temp			; bad flag
+    53  0056 a9a5               r0tsta5:lda #$a5			; test byte $a5
+    54  0058 9104               	sta (pointer),y
+    55  005a d104               	cmp (pointer),y
+    56  005c f004               	beq r0t5anx			; ok
+    57  005e a980               	lda #$80
+    58  0060 8502               	sta temp			; bad flag
+    59  0062 c8                 r0t5anx:iny
+    60  0063 d0e5               	bne r0tst5a			; next byte
+    61  0065 e605               	inc pointer+1			; inc page
+    62  0067 a505               	lda pointer+1
+    63  0069 c980               	cmp #$80			; finished RAM0?
+    64  006b d0dd               	bne r0tst5a			; no.. next page
+    65                          ; TEST $aa, second byte $55
+    66  006d a9008504a9048505   	+st16i pointer, $0400		; ramtest start
+    67                          	; .y already 0
+    68  0075 a9aa               r0tstaa:lda #$aa			; test 1.byte $aa
+    69  0077 9104               	sta (pointer),y
+    70  0079 c8                 	iny
+    71  007a a955               	lda #$55			; test 2.byte $55
+    72  007c 9104               	sta (pointer),y
+    73  007e 88                 	dey
+    74  007f b104               	lda (pointer),y
+    75  0081 c9aa               	cmp #$aa
+    76  0083 f004               	beq r0tst55			; ok
+    77  0085 a980               	lda #$80
+    78  0087 8502               	sta temp			; bad flag
+    79  0089 c8                 r0tst55:iny
+    80  008a b104               	lda (pointer),y
+    81  008c c955               	cmp #$55
+    82  008e f004               	beq r0taanx			; ok
+    83  0090 a980               	lda #$80
+    84  0092 8502               	sta temp			; bad flag
+    85  0094 c8                 r0taanx:iny
+    86  0095 d0de               	bne r0tstaa			; next byte
+    87  0097 e605               	inc pointer+1			; inc page
+    88  0099 a505               	lda pointer+1
+    89  009b c980               	cmp #$80			; finished RAM0?
+    90  009d d0d6               	bne r0tstaa			; no.. next page
+    91                          ; TEST address lowbyte
+    92  009f a9008504a9048505   	+st16i pointer, $0400		; ramtest start
+    93                          	; .y already 0
+    94  00a7 98                 r0tstlo:tya				; store address lowbyte
+    95  00a8 9104               	sta (pointer),y
+    96  00aa c8                 	iny
+    97  00ab d0fa               	bne r0tstlo			; next byte
+    98  00ad e605               	inc pointer+1			; inc page
+    99  00af a505               	lda pointer+1
+   100  00b1 c980               	cmp #$80			; finished RAM0?
+   101  00b3 d0f2               	bne r0tstlo			; no.. next page
+   102  00b5 a9008504a9048505   	+st16i pointer, $0400		; ramtest start
+   103                          	; .y already 0
+   104  00bd 98                 r0chklo:tya				; check address lowbyte
+   105  00be d104               	cmp (pointer),y
+   106  00c0 f004               	beq r0tlonx			; ok
+   107  00c2 a980               	lda #$80
+   108  00c4 8502               	sta temp			; bad flag
+   109  00c6 c8                 r0tlonx:iny
+   110  00c7 d0f4               	bne r0chklo			; next byte
+   111  00c9 e605               	inc pointer+1			; inc page
+   112  00cb a505               	lda pointer+1
+   113  00cd c980               	cmp #$80			; finished RAM0?
+   114  00cf d0ec               	bne r0chklo			; no.. next page
+   115                          ; TEST address highbyte
+   116  00d1 a9008504a9048505   	+st16i pointer, $0400		; ramtest start
+   117                          	; .y already 0, address highbyte already in .a
+   118  00d9 9104               r0tsthi:sta (pointer),y
+   119  00db c8                 	iny
+   120  00dc d0fb               	bne r0tsthi			; next byte
+   121  00de e605               	inc pointer+1			; inc page
+   122  00e0 a505               	lda pointer+1
+   123  00e2 c980               	cmp #$80			; finished RAM0?
+   124  00e4 d0f3               	bne r0tsthi			; no.. next page
+   125  00e6 a9008504a9048505   	+st16i pointer, $0400		; ramtest start
+   126                          	; .y already 0, address highbyte already in .a
+   127  00ee d104               r0chkhi:cmp (pointer),y
+   128  00f0 f004               	beq r0thinx			; ok
+   129  00f2 a980               	lda #$80
+   130  00f4 8502               	sta temp			; bad flag
+   131  00f6 c8                 r0thinx:iny
+   132  00f7 d0f5               	bne r0chkhi			; next byte
+   133  00f9 e605               	inc pointer+1			; inc page
+   134  00fb a505               	lda pointer+1
+   135  00fd c980               	cmp #$80			; finished RAM0?
+   136  00ff d0ed               	bne r0chkhi			; no.. next page
+   137                          ; print result
+   138  0101 2402               	bit temp			; bank ok?
+   139  0103 1006               	bpl ram0ok			; yes.. print ok
+   140  0105 20ab01             	jsr TestBAD
+   141  0108 4c0e01             	jmp r0nxbnk			; next bank
+   142                          
+   143  010b 209301             ram0ok:	jsr TestOK
+   144                          ; next bank
+   145  010e ae40de             r0nxbnk:ldx mmu
+   146  0111 e00f               	cpx #$0f			; last bank?
+   147  0113 f007               	beq r0bnkst
+   148  0115 e8                 	inx				; inc bank
+   149  0116 8e40de             	stx mmu
+   150  0119 4c1100             	jmp tstram0			; test next bank
+   151                          ; store bank no
+   152                          	; last bank in .a
+   153  011c a2a9               r0bnkst:ldx #<(Screen+4*COLS+9)		; reset to first result screen position
+   154  011e 8600               	stx result_pointer 
+   155  0120 a200               	ldx #>(Screen+4*COLS+9)
+   156  0122 8601               	stx result_pointer+1
+   157                          
+   158  0124 a200               	ldx #$00			; RAM0 start $0400
+   159  0126 8604               	stx pointer
+   160  0128 a204               r0bnklp:ldx #$04
+   161  012a 8605               	stx pointer+1
+   162  012c a000               	ldy #0
+   163  012e 9104               r0bstlp:sta (pointer),y
+   164  0130 c8                 	iny
+   165  0131 d0fb               	bne r0bstlp			; next byte
+   166  0133 e605               	inc pointer+1			; inc page
+   167  0135 a605               	ldx pointer+1
+   168  0137 e080               	cpx #$80			; finished RAM0?
+   169  0139 d0f3               	bne r0bstlp			; no.. next page
+   170                          ; decrease bank
+   171  013b c900               	cmp #$00			; first bank reached?
+   172  013d f009               	beq r0bchk			; yes.. check banks
+   173  013f 38                 	sec
+   174  0140 e901               	sbc #1				; dec bank
+   175  0142 8d40de             	sta mmu
+   176  0145 4c2801             	jmp r0bnklp
+   177                          ; check bank no
+   178                          	; .a already 0
+   179  0148 8504               r0bchk:	sta pointer			; RAM0 start $0400
+   180                          	; .a = start bank 0
+   181  014a a204               r0chklp:ldx #$04
+   182  014c 8605               	stx pointer+1
+   183  014e a000               	ldy #0
+   184  0150 8402               	sty temp			; clear test flag (0=ok)
+   185  0152 d104               r0bchlp:cmp (pointer),y
+   186  0154 f004               	beq r0chknx			; ok
+   187  0156 a280               	ldx #$80
+   188  0158 8602               	stx temp			; bad flag
+   189  015a c8                 r0chknx:iny
+   190  015b d0f5               	bne r0bchlp			; next byte
+   191  015d e605               	inc pointer+1			; inc page
+   192  015f a605               	ldx pointer+1
+   193  0161 e080               	cpx #$80			; finished RAM0?
+   194  0163 d0ed               	bne r0bchlp			; no.. next page
+   195                          
+   196  0165 2402               	bit temp			; bank ok?
+   197  0167 1008               	bpl r0chkok			; yes.. skip line
+   198  0169 a8                 	tay				; remember bank
+   199  016a 20ab01             	jsr TestBAD
+   200  016d 98                 	tya
+   201  016e 4c7601             	jmp r0chnxb			; skip
+   202  0171 a8                 r0chkok:tay				; remember bank
+   203  0172 20c403             	jsr SetResultPointer		; skip line
+   204  0175 98                 	tya
+   205                          ; increase bank
+   206  0176 c90f               r0chnxb:cmp #$0f			; last bank?
+   207  0178 f009               	beq rstmmu
+   208  017a 18                 	clc
+   209  017b 6901               	adc #1				; inc bank
+   210  017d 8d40de             	sta mmu
+   211  0180 4c4a01             	jmp r0chklp			; check next bank
+   212                          
+   213  0183 a900               rstmmu:	lda #$00
+   214  0185 8d40de             	sta mmu
+   215                          
+   216  0188 a2bd               	ldx #<(Screen+4*COLS+29)		; reset to first result screen position
+   217  018a 8600               	stx result_pointer 
+   218  018c a200               	ldx #>(Screen+4*COLS+29)
+   219  018e 8601               	stx result_pointer+1
+   220                          
+   221  0190 4c0002             	jmp tstram1			; continue with test of RAM1 above stack
+   222                          ; -------------------------------------------------------------------------------------------------
+   223                          ; write OK
+   224  0193 20c403             TestOK:	jsr SetResultPointer
+   225  0196 a94f               	lda #'O'
+   226  0198 8d00dc             	sta VDPRamWrite
+   227  019b eaeaeaeaeaeaeaea...	+VdpWait WAITVRAM,5-1
+   228  01a5 a94b               	lda #'K'
+   229  01a7 8d00dc             	sta VDPRamWrite
+   230  01aa 60                 	rts
+   231                          ; -------------------------------------------------------------------------------------------------
+   232                          ; write BAD
+   233  01ab 20c403             TestBAD:jsr SetResultPointer
+   234  01ae a942               	lda #'B'
+   235  01b0 8d00dc             	sta VDPRamWrite
+   236  01b3 eaeaeaeaeaeaeaea...	+VdpWait WAITVRAM,5-1
+   237  01bd a941               	lda #'A'
+   238  01bf 8d00dc             	sta VDPRamWrite
+   239  01c2 eaeaeaeaeaeaeaea...	+VdpWait WAITVRAM,5-1
+   240  01cc a944               	lda #'D'
+   241  01ce 8d00dc             	sta VDPRamWrite
+   242  01d1 60                 	rts
+   243                          ; ******************************************** STACK **********************************************
+   244                          !zone stack
+   245                          *= $01e0
+   246                          ; only small stack used
+   247                          ; ******************************************** CODE2 **********************************************
+   248                          !zone code2
+   249                          *= $0200
+   250  0200 a900               tstram1:lda #0
+   251  0202 8502               	sta temp			; clear test flag (0=ok)
+   252                          ; TEST $00, $ff
+   253  0204 a9008504a9808505   	+st16i pointer, $8000		; ramtest start
+   254  020c a000               	ldy #0
+   255  020e a900               r1tst00:lda #$00			; test byte $00
+   256  0210 9104               	sta (pointer),y
+   257  0212 d104               	cmp (pointer),y
+   258  0214 f004               	beq r1tstff			; ok
+   259  0216 a980               	lda #$80
+   260  0218 8502               	sta temp			; bad flag
+   261  021a a9ff               r1tstff:lda #$ff			; test byte $ff
+   262  021c 9104               	sta (pointer),y
+   263  021e d104               	cmp (pointer),y
+   264  0220 f004               	beq r1t00nx			; ok
+   265  0222 a980               	lda #$80
+   266  0224 8502               	sta temp			; bad flag
+   267  0226 c8                 r1t00nx:iny
+   268  0227 d0e5               	bne r1tst00			; next byte
+   269  0229 e605               	inc pointer+1			; inc page
+   270  022b a505               	lda pointer+1
+   271  022d f00a               	beq r1ini5a			; $0000 -> test finished
+   272  022f c9dc               	cmp #$dc			; I/O area reached?
+   273  0231 d0db               	bne r1tst00			; no.. next page
+   274  0233 a9e0               	lda #$e0			; skip I/O
+   275  0235 8505               	sta pointer+1
+   276  0237 d0d5               	bne r1tst00			; always: next page behind I/O
+   277                          ; TEST $5a, $a5
+   278  0239 a9008504a9808505   r1ini5a:+st16i pointer, $8000		; ramtest start
+   279                          	; .y already 0
+   280  0241 a95a               r1tst5a:lda #$5a			; test byte $5a
+   281  0243 9104               	sta (pointer),y
+   282  0245 d104               	cmp (pointer),y
+   283  0247 f004               	beq r1tsta5			; ok
+   284  0249 a980               	lda #$80
+   285  024b 8502               	sta temp			; bad flag
+   286  024d a9a5               r1tsta5:lda #$a5			; test byte $a5
+   287  024f 9104               	sta (pointer),y
+   288  0251 d104               	cmp (pointer),y
+   289  0253 f004               	beq r1t5anx			; ok
+   290  0255 a980               	lda #$80
+   291  0257 8502               	sta temp			; bad flag
+   292  0259 c8                 r1t5anx:iny
+   293  025a d0e5               	bne r1tst5a			; next byte
+   294  025c e605               	inc pointer+1			; inc page
+   295  025e a505               	lda pointer+1
+   296  0260 f00a               	beq r1iniaa			; $0000 -> test finished
+   297  0262 c9dc               	cmp #$dc			; I/O area reached?
+   298  0264 d0db               	bne r1tst5a			; no.. next page
+   299  0266 a9e0               	lda #$e0			; skip I/O
+   300  0268 8505               	sta pointer+1
+   301  026a d0d5               	bne r1tst5a			; always: next page behind I/O
+   302                          ; TEST $aa, second byte $55
+   303  026c a9008504a9808505   r1iniaa:+st16i pointer, $8000		; ramtest start
+   304                          	; .y already 0
+   305  0274 a9aa               r1tstaa:lda #$aa			; test 1.byte $aa
+   306  0276 9104               	sta (pointer),y
+   307  0278 c8                 	iny
+   308  0279 a955               	lda #$55			; test 2.byte $55
+   309  027b 9104               	sta (pointer),y
+   310  027d 88                 	dey
+   311  027e b104               	lda (pointer),y
+   312  0280 c9aa               	cmp #$aa
+   313  0282 f004               	beq r1tst55			; ok
+   314  0284 a980               	lda #$80
+   315  0286 8502               	sta temp			; bad flag
+   316  0288 c8                 r1tst55:iny
+   317  0289 b104               	lda (pointer),y
+   318  028b c955               	cmp #$55
+   319  028d f004               	beq r1taanx			; ok
+   320  028f a980               	lda #$80
+   321  0291 8502               	sta temp			; bad flag
+   322  0293 c8                 r1taanx:iny
+   323  0294 d0de               	bne r1tstaa			; next byte
+   324  0296 e605               	inc pointer+1			; inc page
+   325  0298 a505               	lda pointer+1
+   326  029a f00a               	beq r1inilo			; $0000 -> test finished
+   327  029c c9dc               	cmp #$dc			; I/O area reached?
+   328  029e d0d4               	bne r1tstaa			; no.. next page
+   329  02a0 a9e0               	lda #$e0			; skip I/O
+   330  02a2 8505               	sta pointer+1
+   331  02a4 d0ce               	bne r1tstaa			; always: next page behind I/O
+   332                          ; TEST address lowbyte
+   333  02a6 a9008504a9808505   r1inilo:+st16i pointer, $8000		; ramtest start
+   334                          	; .y already 0
+   335  02ae 98                 r1tstlo:tya				; store address lowbyte
+   336  02af 9104               	sta (pointer),y
+   337  02b1 c8                 	iny
+   338  02b2 d0fa               	bne r1tstlo			; next byte
+   339  02b4 e605               	inc pointer+1			; inc page
+   340  02b6 a505               	lda pointer+1
+   341  02b8 f00a               	beq r1inilc			; $0000 -> test finished
+   342  02ba c9dc               	cmp #$dc			; I/O area reached?
+   343  02bc d0f0               	bne r1tstlo			; no.. next page
+   344  02be a9e0               	lda #$e0			; skip I/O
+   345  02c0 8505               	sta pointer+1
+   346  02c2 d0ea               	bne r1tstlo			; always: next page behind I/O
+   347  02c4 a9008504a9808505   r1inilc	+st16i pointer, $8000		; ramtest start
+   348                          	; .y already 0
+   349  02cc 98                 r1chklo:tya				; check address lowbyte
+   350  02cd d104               	cmp (pointer),y
+   351  02cf f004               	beq r1tlonx			; ok
+   352  02d1 a980               	lda #$80
+   353  02d3 8502               	sta temp			; bad flag
+   354  02d5 c8                 r1tlonx:iny
+   355  02d6 d0f4               	bne r1chklo			; next byte
+   356  02d8 e605               	inc pointer+1			; inc page
+   357  02da a505               	lda pointer+1
+   358  02dc f00a               	beq r1inihi			; $0000 -> test finished
+   359  02de c9dc               	cmp #$dc			; I/O area reached?
+   360  02e0 d0ea               	bne r1chklo			; no.. next page
+   361  02e2 a9e0               	lda #$e0			; skip I/O
+   362  02e4 8505               	sta pointer+1
+   363  02e6 d0e4               	bne r1chklo			; always: next page behind I/O
+   364                          ; TEST address highbyte
+   365  02e8 a9008504a9808505   r1inihi:+st16i pointer, $8000		; ramtest start
+   366                          	; .y already 0, address highbyte already in .a
+   367  02f0 9104               r1tsthi:sta (pointer),y
+   368  02f2 c8                 	iny
+   369  02f3 d0fb               	bne r1tsthi			; next byte
+   370  02f5 e605               	inc pointer+1			; inc page
+   371  02f7 a505               	lda pointer+1
+   372  02f9 f00a               	beq r1inihc			; $0000 -> test finished
+   373  02fb c9dc               	cmp #$dc			; I/O area reached?
+   374  02fd d0f1               	bne r1tsthi			; no.. next page
+   375  02ff a9e0               	lda #$e0			; skip I/O
+   376  0301 8505               	sta pointer+1
+   377  0303 d0eb               	bne r1tsthi			; always: next page behind I/O
+   378  0305 a9008504a9808505   r1inihc:+st16i pointer, $8000		; ramtest start
+   379                          	; .y already 0, address highbyte already in .a
+   380  030d d104               r1chkhi:cmp (pointer),y
+   381  030f f004               	beq r1thinx			; ok
+   382  0311 a980               	lda #$80
+   383  0313 8502               	sta temp			; bad flag
+   384  0315 c8                 r1thinx:iny
+   385  0316 d0f5               	bne r1chkhi			; next byte
+   386  0318 e605               	inc pointer+1			; inc page
+   387  031a a505               	lda pointer+1
+   388  031c f00a               	beq r1reslt			; $0000 -> test finished
+   389  031e c9dc               	cmp #$dc			; I/O area reached?
+   390  0320 d0eb               	bne r1chkhi			; no.. next page
+   391  0322 a9e0               	lda #$e0			; skip I/O
+   392  0324 8505               	sta pointer+1
+   393  0326 d0e5               	bne r1chkhi			; always: next page behind I/O
+   394                          ; print result
+   395  0328 2402               r1reslt:bit temp			; bank ok?
+   396  032a 1006               	bpl ram1ok			; yes.. print ok
+   397  032c 20ab01             	jsr TestBAD
+   398  032f 4c3503             	jmp r1nxbnk			; next bank
+   399                          
+   400  0332 209301             ram1ok:	jsr TestOK
+   401                          ; next bank
+   402  0335 ad40de             r1nxbnk:lda mmu
+   403  0338 c9f0               	cmp #$f0			; last bank?
+   404  033a f009               	beq r1bnkst
+   405  033c 18                 	clc
+   406  033d 6910               	adc #$10			; inc bank
+   407  033f 8d40de             	sta mmu
+   408  0342 4c0002             	jmp tstram1			; test next bank
+   409                          ; store bank no
+   410                          	; last bank in .a
+   411  0345 a2bd               r1bnkst:ldx #<(Screen+4*COLS+29)		; reset to first result screen position
+   412  0347 8600               	stx result_pointer 
+   413  0349 a200               	ldx #>(Screen+4*COLS+29)
+   414  034b 8601               	stx result_pointer+1
+   415                          
+   416  034d a200               	ldx #$00			; RAM1 start $8000
+   417  034f 8604               	stx pointer
+   418  0351 a280               r1bnklp:ldx #$80
+   419  0353 8605               	stx pointer+1
+   420  0355 a000               	ldy #0
+   421  0357 9104               r1bstlp:sta (pointer),y
+   422  0359 c8                 	iny
+   423  035a d0fb               	bne r1bstlp			; next byte
+   424  035c e605               	inc pointer+1			; inc page
+   425  035e a605               	ldx pointer+1
+   426  0360 f00a               	beq r1bstdc			; $0000 -> test finished
+   427  0362 e0dc               	cpx #$dc			; I/O area reached?
+   428  0364 d0f1               	bne r1bstlp			; no.. next page
+   429  0366 a2e0               	ldx #$e0			; skip I/O
+   430  0368 8605               	stx pointer+1
+   431  036a d0eb               	bne r1bstlp			; always: next page behind I/O
+   432                          ; decrease bank
+   433  036c c900               r1bstdc:cmp #$00			; first bank reached?
+   434  036e f009               	beq r1bchk			; yes.. check banks
+   435  0370 38                 	sec
+   436  0371 e910               	sbc #$10			; dec bank
+   437  0373 8d40de             	sta mmu
+   438  0376 4c5103             	jmp r1bnklp
+   439                          ; check bank no
+   440                          	; .a already 0
+   441  0379 8504               r1bchk:	sta pointer			; RAM1 start $8000
+   442                          	; .a = start bank 0
+   443  037b a280               r1chklp:ldx #$80
+   444  037d 8605               	stx pointer+1
+   445  037f a000               	ldy #0
+   446  0381 8402               	sty temp			; clear test flag (0=ok)
+   447  0383 d104               r1bchlp:cmp (pointer),y
+   448  0385 f004               	beq r1chknx			; ok
+   449  0387 a280               	ldx #$80
+   450  0389 8602               	stx temp			; bad flag
+   451  038b c8                 r1chknx:iny
+   452  038c d0f5               	bne r1bchlp			; next byte
+   453  038e e605               	inc pointer+1			; inc page
+   454  0390 a605               	ldx pointer+1
+   455  0392 f00a               	beq r1bkres			; $0000 -> test finished
+   456  0394 e0dc               	cpx #$dc			; I/O area reached?
+   457  0396 d0eb               	bne r1bchlp			; no.. next page
+   458  0398 a2e0               	ldx #$e0			; skip I/O
+   459  039a 8605               	stx pointer+1
+   460  039c d0e5               	bne r1bchlp			; always: next page behind I/O
+   461                          
+   462  039e 2402               r1bkres:bit temp			; bank ok?
+   463  03a0 1008               	bpl r1chkok			; yes.. skip line
+   464  03a2 a8                 	tay				; remember bank
+   465  03a3 20ab01             	jsr TestBAD
+   466  03a6 98                 	tya
+   467  03a7 4caf03             	jmp r1chnxb			; skip
+   468  03aa a8                 r1chkok:tay				; remember bank
+   469  03ab 20c403             	jsr SetResultPointer		; skip line
+   470  03ae 98                 	tya
+   471                          ; increase bank
+   472  03af c9f0               r1chnxb:cmp #$f0			; last bank?
+   473  03b1 f009               	beq end				; end
+   474  03b3 18                 	clc
+   475  03b4 6910               	adc #$10			; inc bank
+   476  03b6 8d40de             	sta mmu
+   477  03b9 4c7b03             	jmp r1chklp			; check next bank
+   478                          
+   479  03bc a900               end:	lda #$00
+   480  03be 8d40de             	sta mmu
+   481  03c1 4c0900             	jmp Test			; restart with RAM0
+   482                          ; -------------------------------------------------------------------------------------------------
+   483                          ; set and move result pointer
+   484                          SetResultPointer:
+   485  03c4 a600               	ldx result_pointer		; screen pointer to result
+   486  03c6 a501               	lda result_pointer+1
+   487  03c8 8e01dc09408d01dc   	+VdpWriteAddress
+   488  03d0 8a                 	txa				; low to .a
+   489  03d1 18                 	clc
+   490  03d2 6928               	adc #COLS			; result pointer to next line
+   491  03d4 8500               	sta result_pointer
+   492  03d6 9002               	bcc setrptx
+   493  03d8 e601               	inc result_pointer+1
+   494                          	+VdpWait WAITVRAM1,21-1
+   495  03da 60                 setrptx:rts
+   496                          ; ******************************************** BASIC **********************************************
+   497                          !zone basic
+   498                          *= $0400
