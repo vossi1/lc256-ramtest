@@ -1,36 +1,17 @@
 ; LC256 Ramtest - Testcode KB0
 ; for ACME assembling by Vossi 11/2024, last update 11/2024
-; v1.0 initial
-; v1.1 added pcb v.1.0 128K-version in test.b
-;   AWARE: NOTHING CONNECTED TO PORT B 4-7 ALLOWED!
+; v1.0 initial - special pcb v.1.0 128K-version
 !cpu 65c02	; 6502, 6510, 65c02, 65816
 !ct scr		; Standard text/char conversion table -> pet = petscii
-; * switches
-PCBV10	= 0	; special pcb v.1.0 128K-version (2x 2bit MMU)
 !to "test.bin", plain
 !source "defines.b"
 !source "macros.b"
 ; ***************************************** TEST CODE *********************************************
-!if PCBV10 = 1{
-	LASTBANK0 = $03			; pcb v.1.0 2x 2bit MMU
-	LASTBANK1 = $0c
-	STEPBANK1 = $04
-} else{
-	LASTBANK0 = $0f			; > pcb v.1.1 2x 4bit MMU
-	LASTBANK1 = $f0
-	STEPBANK1 = $10
-}
 !initmem FILL
 !zone testcode
 *= TESTCODE
 	ldx #$fe			; reset stack
 	txs
-!if PCBV10 = 1{
-	inx
-	stx via2+ddrb			; pcb v.1.0 complete port b output  
-	inx
-	stx mmu				; clear via2 port b
-}
 
 Test:	ldx #<(Screen+4*COLS+9)		; reset to first result screen position
 	stx result_pointer 
@@ -162,7 +143,7 @@ r0thinx:iny
 ram0ok:	jsr TestOK
 ; next bank
 r0nxbnk:ldx mmu
-	cpx #LASTBANK0			; last bank?
+	cpx #$0f			; last bank?
 	beq r0bnkst
 	inx				; inc bank
 	stx mmu
@@ -222,7 +203,7 @@ r0chkok:tay				; remember bank
 	jsr SetResultPointer		; skip line
 	tya
 ; increase bank
-r0chnxb:cmp #LASTBANK0			; last bank?
+r0chnxb:cmp #$0f			; last bank?
 	beq rstmmu
 	clc
 	adc #1				; inc bank
@@ -419,10 +400,10 @@ r1reslt:bit temp			; bank ok?
 ram1ok:	jsr TestOK
 ; next bank
 r1nxbnk:lda mmu
-	cmp #LASTBANK1			; last bank?
+	cmp #$f0			; last bank?
 	beq r1bnkst
 	clc
-	adc #STEPBANK1			; inc bank
+	adc #$10			; inc bank
 	sta mmu
 	jmp tstram1			; test next bank
 ; store bank no
@@ -488,10 +469,10 @@ r1chkok:tay				; remember bank
 	jsr SetResultPointer		; skip line
 	tya
 ; increase bank
-r1chnxb:cmp #LASTBANK1			; last bank?
+r1chnxb:cmp #$f0			; last bank?
 	beq end				; end
 	clc
-	adc #STEPBANK1			; inc bank
+	adc #$10			; inc bank
 	sta mmu
 	jmp r1chklp			; check next bank
 

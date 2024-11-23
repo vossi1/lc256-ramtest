@@ -3,70 +3,73 @@
      1                          ; LC256 Ramtest
      2                          ; for ACME assembling by Vossi 11/2024, last update 11/2024
      3                          ; v1.0 initial
-     4                          !cpu 65c02	; 6502, 6510, 65c02, 65816
-     5                          !ct scr		; Standard text/char conversion table -> pet = petscii
-     6                          !to "ramtest", cbm
+     4                          ; v1.1 added pcb v.1.0 128K-version in test.b
+     5                          !cpu 65c02	; 6502, 6510, 65c02, 65816
+     6                          !ct scr		; Standard text/char conversion table -> pet = petscii
+     7                          !to "ramtest", cbm
 
 ; ******** Source: defines.b
      1                          ; LC256 Ramtest Defines
      2                          ; for ACME assembling by Vossi 11/2024, last update 11/2024
      3                          ; v1.0 initial
-     4                          ; switches
-     5                          CLOCK = 4		; CPU clock in MHz for VDP waits
-     6                          ; vdp
-     7                          PAL = 1			; PAL=1, NTSC=0		selects V9938/58 PAL RGB-output, NTSC has a higher picture
-     8                          ; VDP speed parameter - don't change!
-     9                          WAIT12 = 1 ; 2		; us 1. - 2. byte VDP
-    10                          WAIT23 = 2 ; 5		; us 2. - 3. byte VDP
-    11                          WAITVRAM1 = 3		; us vram 1.access
-    12                          WAITVRAM = 6		; us vram loop (text mode 1+2: 6, mode 6+7: 5)
-    13                          ; ***************************************** CONSTANTS *********************************************
-    14                          FILL		= $00		; fills free memory areas with $00
-    15                          V_NULL		= $ff		; VDP string End
-    16                          ; colors
-    17                          BLUE		= 6
-    18                          WHITE		= 1
-    19                          ; VDP defines
-    20                          VDPREG1         = $10           ; VDP reg 1 value (mode bits M1+M2, screen disabled)
-    21                          VDPREG9         = $00 | PAL*2   ; VDP reg 9 value ($00 = NTSC, $02 = PAL / 192 lines)
-    22                          VDPREG18        = $0d           ; VDP reg 18 value (V/H screen adjust, $0d = Sony PVM 9")
-    23                          FONTPAGES	= $08		; fontdata size in pages
-    24                          ; colors
-    25                          COLOR		= WHITE
-    26                          BGRCOLOR	= BLUE
-    27                          ; screen values
-    28                          COLS		= 40		; screen columns
-    29                          ROWS		= 24		; used lines
-    30                          ; ***************************************** ADDRESSES *********************************************
-    31                          ; I/O addresses
-    32                          VDPWriteAdr	= $dc00		; Port#0 RamWrite, #1 Control, #2 Palette, #3 Indirect
-    33                          VDPReadAdr	= $dc80		; Port#0 RamRead, #1 Status
-    34                          ; VDP ports
-    35                          !addr	VDPRamWrite	= VDPWriteAdr
-    36                          !addr	VDPControl	= VDPWriteAdr+1
-    37                          !addr	VDPPalette	= VDPWriteAdr+2
-    38                          !addr	VDPIndirect	= VDPWriteAdr+3
-    39                          !addr	VDPRamRead	= VDPReadAdr
-    40                          !addr	VDPStatus	= VDPReadAdr+1
-    41                          PatternTable		= $0800		; font
-    42                          Screen			= $0000
-    43                          ; 6522 VIA2 - MMU, IEC, USB RXF/TXE, Restore
-    44                          	prb	= $0		; Port reg b
-    45                          	pcr	= $c		; peripheral control register
-    46                          !addr	via2	= $de40
-    47                          !addr	mmu	= via2+prb	; VIA2 port B MMU register
-    48                          ; ***************************************** ZERO PAGE *********************************************
-    49                          ; Variables
-    50                          *=$0000
-    51                          !addr	result_pointer			; pointer to result screen position
-    52                          !addr	source_pointer	*=*+2		; pointer for code copy 
-    53                          !addr	temp		*=*+1		; temp
-    54                          !addr	counter		*=*+1		; counter
-    55                          !addr	pointer		*=*+2		; pointer
-    56                          !addr	TESTCODE	=*		; start of testcode
+     4                          ; v1.1 added pcb v.1.0 128K-version in test.b
+     5                          ; switches
+     6                          CLOCK = 4		; CPU clock in MHz for VDP waits
+     7                          ; vdp
+     8                          PAL = 1			; PAL=1, NTSC=0		selects V9938/58 PAL RGB-output, NTSC has a higher picture
+     9                          ; VDP speed parameter - don't change!
+    10                          WAIT12 = 1 ; 2		; us 1. - 2. byte VDP
+    11                          WAIT23 = 2 ; 5		; us 2. - 3. byte VDP
+    12                          WAITVRAM1 = 3		; us vram 1.access
+    13                          WAITVRAM = 6		; us vram loop (text mode 1+2: 6, mode 6+7: 5)
+    14                          ; ***************************************** CONSTANTS *********************************************
+    15                          FILL		= $00		; fills free memory areas with $00
+    16                          V_NULL		= $ff		; VDP string End
+    17                          ; colors
+    18                          BLUE		= 6
+    19                          WHITE		= 1
+    20                          ; VDP defines
+    21                          VDPREG1         = $10           ; VDP reg 1 value (mode bits M1+M2, screen disabled)
+    22                          VDPREG9         = $00 | PAL*2   ; VDP reg 9 value ($00 = NTSC, $02 = PAL / 192 lines)
+    23                          VDPREG18        = $0d           ; VDP reg 18 value (V/H screen adjust, $0d = Sony PVM 9")
+    24                          FONTPAGES	= $08		; fontdata size in pages
+    25                          ; colors
+    26                          COLOR		= WHITE
+    27                          BGRCOLOR	= BLUE
+    28                          ; screen values
+    29                          COLS		= 40		; screen columns
+    30                          ROWS		= 24		; used lines
+    31                          ; ***************************************** ADDRESSES *********************************************
+    32                          ; I/O addresses
+    33                          VDPWriteAdr	= $dc00		; Port#0 RamWrite, #1 Control, #2 Palette, #3 Indirect
+    34                          VDPReadAdr	= $dc80		; Port#0 RamRead, #1 Status
+    35                          ; VDP ports
+    36                          !addr	VDPRamWrite	= VDPWriteAdr
+    37                          !addr	VDPControl	= VDPWriteAdr+1
+    38                          !addr	VDPPalette	= VDPWriteAdr+2
+    39                          !addr	VDPIndirect	= VDPWriteAdr+3
+    40                          !addr	VDPRamRead	= VDPReadAdr
+    41                          !addr	VDPStatus	= VDPReadAdr+1
+    42                          PatternTable		= $0800		; font
+    43                          Screen			= $0000
+    44                          ; 6522 VIA2 - MMU, IEC, USB RXF/TXE, Restore
+    45                          	prb	= $0		; Port reg b
+    46                          	ddrb	= $2		; Direction reg b
+    47                          	pcr	= $c		; peripheral control register
+    48                          !addr	via2	= $de40
+    49                          !addr	mmu	= via2+prb	; VIA2 port B MMU register
+    50                          ; ***************************************** ZERO PAGE *********************************************
+    51                          ; Variables
+    52                          *=$0000
+    53                          !addr	result_pointer			; pointer to result screen position
+    54                          !addr	source_pointer	*=*+2		; pointer for code copy 
+    55                          !addr	temp		*=*+1		; temp
+    56                          !addr	counter		*=*+1		; counter
+    57                          !addr	pointer		*=*+2		; pointer
+    58                          !addr	TESTCODE	=*		; start of testcode
 
 ; ******** Source: ramtest.b
-     7                          
+     8                          
 
 ; ******** Source: macros.b
      1                          ; LC256 Ramtest Macros
@@ -104,245 +107,245 @@
     33                          	sta VDPControl
 
 ; ******** Source: ramtest.b
-     8                          
-     9                          ; **************************************** BASIC LOADER *******************************************
-    10                          !initmem FILL
-    11                          !zone basic
-    12                          *= $0401
-    13  0401 0c040a009e203130...!byte $0c,$04,$0a,$00,$9e,$20,$31,$30,$33,$38,$00,$00,$00	; 10 SYS 1038
-    14                          ; ***************************************** ZONE MAIN *********************************************
-    15                          !zone main
-    16                          *= $040e
-    17                          ; main code
-    18  040e 78                 	sei
-    19  040f 20b804             	jsr VdpInit			; init VDP
-    20  0412 204f05             	jsr VdpClear			; clear screen
-    21  0415 204405             	jsr VdpOn			; switch display on
-    22                          ; screen
-    23  0418 a9ac8504a9058505   	+st16i pointer, S_Title		; string address
-    24  0420 a000               	ldy #0				; line in .y
-    25  0422 a200               	ldx #0				; column in .x
-    26  0424 207505             	jsr VdpText			; write string
-    27  0427 a9cf8504a9058505   	+st16i pointer, S_Rams
-    28  042f a002               	ldy #2
-    29  0431 a200               	ldx #0
-    30  0433 207505             	jsr VdpText
-    31  0436 a90f8504a9068505   	+st16i pointer, S_Tests
-    32  043e a016               	ldy #22
-    33  0440 a200               	ldx #0
-    34  0442 207505             	jsr VdpText
-    35                          	
-    36  0445 a004               	ldy #4
-    37  0447 8403               	sty counter			; bank line
-    38  0449 a9f48504a9058505   wbnklp:	+st16i pointer, S_Bank		; string address
-    39  0451 a403               	ldy counter			; line
-    40  0453 a200               	ldx #0				; column
-    41  0455 207505             	jsr VdpText
-    42  0458 a503               	lda counter 
-    43  045a 18                 	clc
-    44  045b 692c               	adc #'0'-4			; calc screencode (-line)
-    45  045d c93a               	cmp #'9'+1
-    46  045f 9003               	bcc wbnkno			; 0-9 -> skip
-    47  0461 18                 	clc
-    48  0462 6907               	adc #7				; a-f
-    49  0464 8d0d06             wbnkno:	sta S_No			; store in dummy string
-    50  0467 a403               	ldy counter
-    51  0469 a205               	ldx #5				; column left
-    52  046b a90d8504a9068505   	+st16i pointer, S_No		; Dummy string address
-    53  0473 207505             	jsr VdpText
-    54  0476 a403               	ldy counter
-    55  0478 a219               	ldx #5+20			; column right
-    56  047a a90d8504a9068505   	+st16i pointer, S_No
-    57  0482 207505             	jsr VdpText
-    58  0485 e603               	inc counter
-    59  0487 a503               	lda counter
-    60  0489 c914               	cmp #4+16			; last bank?
-    61  048b d0bc               	bne wbnklp			; ..no -> next line
-    62                          ; copy TESTCODE
-    63  048d a964               	lda #<TestCode			; testcode source
-    64  048f 8500               	sta source_pointer
-    65  0491 a906               	lda #>TestCode
-    66  0493 8501               	sta source_pointer+1
-    67  0495 a906               	lda #<TESTCODE			; target
-    68  0497 8504               	sta pointer
-    69  0499 a900               	lda #>TESTCODE
-    70  049b 8505               	sta pointer+1
-    71  049d a000               	ldy #0
-    72                          	
-    73  049f b100               copylp:	lda (source_pointer),y
-    74  04a1 9104               	sta (pointer),y
-    75  04a3 c8                 	iny
-    76  04a4 d0f9               	bne copylp
-    77  04a6 e601               	inc source_pointer+1
-    78  04a8 e605               	inc pointer+1
-    79  04aa a505               	lda pointer+1
-    80  04ac c904               	cmp #$04			; reached basic start?
-    81  04ae d0ef               	bne copylp			; no.. copy next page
-    82                          
-    83                          ; disable ROM
-    84  04b0 a9dc               	lda  #%11011100         ; via2: ca2 low, cb2 low, ca1 neg,cb1 pos
-    85  04b2 8d4cde             	sta  via2+pcr		;   MMU: ca2+cb2 = ROM disabled, ca1 = restore key
-    86                          
-    87  04b5 4c0600             	jmp TESTCODE
-    88                          ; *********************************** ZONE VDP SUBROUTINES ****************************************
-    89                          !zone vdp_subroutines
-    90                          ; init vdp
-    91  04b8 a900               VdpInit:lda #0
-    92  04ba aa                 	tax
-    93  04bb 8d01dca9918d01dc   	+VdpSetReg 17			; write VDP regs fast indirect
-    94  04c3 ea                 	+VdpWait WAIT23,7-1
-    95  04c4 bd3506             vinilp:	lda VdpInitData,x
-    96  04c7 8d03dc             	sta VDPIndirect
-    97  04ca e8                 	inx
-    98  04cb e00f               	cpx #VdpInitDataEnd-VdpInitData
-    99                          	+VdpWait WAIT23,14
-   100  04cd d0f5               	bne vinilp
-   101                          	
-   102  04cf a90d               	lda #VDPREG18
-   103                          	+VdpWait WAIT23,11-1
-   104  04d1 8d01dca9928d01dc   	+VdpSetReg 18			; set register 18 V/H display adjust L 7-1,0,f-8 R
-   105                          ; clear 16kB VRAM
-   106  04d9 a900               	lda #$00
-   107  04db aa                 	tax
-   108  04dc ea                 	+VdpWait WAIT23,7-1
-   109  04dd 8e01dc09408d01dc   	+VdpWriteAddress		; set VRAM write address to $aaxx = $0000, Bank Reg already 0
-   110                          	; .x still 0
-   111  04e5 8a                 	txa				; VRAM init value =$00
-   112  04e6 a040               	ldy #$40			; $40 pages to clear = 16kB
-   113  04e8 eaeaea             	+VdpWait WAITVRAM1,7-1
-   114  04eb 8d00dc             viramlp:sta VDPRamWrite
-   115  04ee e8                 	inx
-   116  04ef eaeaeaeaeaeaeaea   	+VdpWait WAITVRAM,9-1
-   117  04f7 d0f2               	bne viramlp
-   118  04f9 88                 	dey				; next page
-   119  04fa d0ef               	bne viramlp			; continue till finished
-   120                          	; .y already 0
-   121  04fc 98                 	tya				; .a=0
-   122                          	+VdpWait WAIT23,11-1	
-   123  04fd 8d01dca98e8d01dc   	+VdpSetReg 14			; set VRAM bank register to 0
-   124                          ; copy color palette
-   125                          	; .x.y already 0
-   126  0505 98                 	tya				; .a=0
-   127  0506 8d01dca9908d01dc   	+VdpSetReg 16			; set VDP register 16 = palette pointer to 0 
-   128  050e ea                 	+VdpWait WAIT23,7-1	
-   129  050f bd4406             vipallp:lda PaletteData,x		; load palette-color to write
-   130  0512 8d02dc             	sta VDPPalette
-   131  0515 e8                 	inx
-   132  0516 e020               	cpx #PaletteDataEnd-PaletteData	; finished ?
-   133                          	+VdpWait WAIT23,14	
-   134  0518 d0f5               	bne vipallp			; ..no -> next color
-   135                          ; copy font to pattern generator table
-   136  051a a908               	lda #>PatternTable
-   137  051c a200               	ldx #<PatternTable
-   138                          	+VdpWait WAIT23,13-1
-   139  051e 8e01dc09408d01dc   	+VdpWriteAddress		; set VRAM write address to $aaxx = PatternTable
-   140  0526 a9398504a90a8505   	+st16i pointer, FontData	; set pointer to fontdata 
-   141  052e a208               	ldx #FONTPAGES			; pages to copy
-   142                          	; .y already 0
-   143                          	+VdpWait WAITVRAM1,20
-   144  0530 b104               vifntlp:lda (pointer),y			; load data
-   145  0532 8d00dc             	sta VDPRamWrite
-   146  0535 c8                 	iny
-   147  0536 eaeaeaeaeaea       	+VdpWait WAITVRAM,13-1
-   148  053c d0f2               	bne vifntlp
-   149  053e e605               	inc pointer+1			; inc fontdata pointer hi
-   150  0540 ca                 	dex				; next page
-   151  0541 d0ed               	bne vifntlp			; continue till finished
-   152  0543 60                 	rts
-   153                          ; -------------------------------------------------------------------------------------------------
-   154                          ; enable screen
-   155  0544 a950               VdpOn:	lda # VDPREG1 | $40		; set mode reg 1 (M1+M2), bit#6 = 1 enables screen
-   156  0546 8d01dca9818d01dc   	+VdpSetReg 1
-   157  054e 60                 	rts
-   158                          ; -------------------------------------------------------------------------------------------------
-   159                          ; clear screen
-   160                          VdpClear:
-   161  054f a200               	ldx #<Screen
-   162  0551 a900               	lda #>Screen
-   163  0553 8e01dc09408d01dc   	+VdpWriteAddress		; set VRAM write address to $aaxx = Screen
-   164  055b a2c0               	ldx #<(ROWS*COLS)		; .y.x = bytes to clear
-   165  055d a003               	ldy #>(ROWS*COLS)
-   166  055f a920               	lda #' '			; space
-   167  0561 eaea               	+VdpWait WAITVRAM1,9-1
-   168  0563 8d00dc             vclrlp:	sta VDPRamWrite
-   169  0566 ca                 	dex				; dec lo
-   170  0567 eaeaeaeaeaeaeaea   	+VdpWait WAITVRAM,8
-   171  056f d0f2               	bne vclrlp
-   172  0571 88                 	dey				; dec hi
-   173  0572 10ef               	bpl vclrlp			; continue till finished
-   174  0574 60                 	rts
-   175                          ; -------------------------------------------------------------------------------------------------
-   176                          ; copy string=pointer to column x, row y
-   177                          VdpText:
-   178  0575 8602               	stx temp			; safe column
-   179  0577 a900               	lda #<Screen			; .x.a = screen table base
-   180  0579 a200               	ldx #>Screen
-   181  057b c000               vtrowlp:cpy #0
-   182  057d f009               	beq vtcols			; line calc finished
-   183  057f 88                 	dey
-   184  0580 18                 	clc
-   185  0581 6928               	adc #COLS			; add line columns
-   186  0583 90f6               	bcc vtrowlp			; next line
-   187  0585 e8                 	inx
-   188  0586 b0f3               	bcs vtrowlp			; always next line
-   189  0588 18                 vtcols:	clc
-   190  0589 6502               	adc temp			; add column
-   191  058b 9001               	bcc vtadr			; no carry
-   192  058d e8                 	inx				; inc hi
-   193  058e 8602               vtadr:	stx temp			; exchange .x.a
-   194  0590 aa                 	tax
-   195  0591 a502               	lda temp
-   196  0593 8e01dc09408d01dc   	+VdpWriteAddress
-   197                          	+VdpWait WAITVRAM1,12
-   198  059b b104               vtwrite:lda (pointer),y			; get char
-   199  059d c9ff               	cmp #V_NULL			; end of string?
-   200  059f f00a               	beq vtexit			; ..yes -> exit
-   201  05a1 8d00dc             	sta VDPRamWrite
-   202  05a4 eaeaeaea           	+VdpWait WAITVRAM,17-1
-   203  05a8 c8                 	iny				; next character from string
-   204  05a9 d0f0               	bne vtwrite
-   205  05ab 60                 vtexit	rts
-   206                          ; ****************************************** ZONE DATA ********************************************
-   207                          !zone data
-   208  05ac 4c43323536205201...S_Title	!scr "LC256 Ramtest v.1.0 (c) 2024 Vossi", V_NULL
-   209  05cf 52414d3020283030...S_Rams	!scr "RAM0 (0000-7FFF)    RAM1 (8000-FFFF)", V_NULL
-   210  05f4 42010e0b20202020...S_Bank	!scr "Bank                Bank", V_NULL
-   211  060d 30ff               S_No	!scr "0", V_NULL		; Dummy Bank no
-   212  060f 540513142012150e...S_Tests	!scr "Test runs in KB0, skips I/O DC00-DFFF", V_NULL
-   213                          ; -------------------------------------------------------------------------------------------------
-   214                          VdpInitData:				; text mode 1 40x24
-   215  0635 0010001f013f0316...!byte $00,VDPREG1,$00,$1f,$01,$3f,$03,COLOR*16+BGRCOLOR,$08,VDPREG9,$00,$00,$00,$f0,$00
-   216                          	; reg  0: $00 mode control 1: text mode 1 (bit#1-3 = M3 - M5)
-   217                          	; reg  1: $10 mode control 2: bit#1 16x16 sprites, bit#3-4 = M2-M1, #6 =1: display enable)
-   218                          	; reg  2: $00 name (screen) table base address $0000 ( * $100)
-   219                          	; reg  3: $1f color table base address $0600 ( * $40 + bit#0-2 = 1)
-   220                          	; reg  4: $01 pattern (character) generator table base address $0800 (* $800)
-   221                          	; reg  5: $3f sprite attribute table base address $1e00 (* $80 - bit#0+1 = 1)
-   222                          	; reg  6: $03 sprite pattern (data) generator base address = $1800 (* $800)
-   223                          	; reg  7: $60 text/overscan-backdrop color
-   224                          	; reg  8: $08 bit#3 = 1: 64k VRAM chips, bit#1 = 0 sprites disable, bit#5 0=transparent
-   225                          	; reg  9: $80 bit#1 = NTSC/PAL, #2 = EVEN/ODD, #3 = interlace, #7 = 192/212 lines
-   226                          	; reg 10: $00 color table base address $0000 bit#0-2 = A14-A16
-   227                          	; reg 11: $00 sprite attribute table base address bit#0-1 = A15-A16
-   228                          	; reg 12: $00 text/background blink color
-   229                          	; reg 13: $f0 blink periods ON/OFF - f0 = blinking off
-   230                          	; reg 14: $00 VRAM write addresss bit#0-2 = A14-A16
-   231                          VdpInitDataEnd:
-   232                          ; -------------------------------------------------------------------------------------------------
-   233                          ; ***** Color Palette - 16 colors, 2 byte/color: RB, 0G each 3bit -> C64 VICII-colors *****
-   234                          PaletteData:
-   235  0644 0000770770011706   	!byte $00,$00,$77,$07,$70,$01,$17,$06	;	0=black		1=white		2=red		3=cyan
-   236  064c 5602320606027207   	!byte $56,$02,$32,$06,$06,$02,$72,$07	;	4=violet	5=green		6=blue		7=yellow
-   237  0654 7003600272031101   	!byte $70,$03,$60,$02,$72,$03,$11,$01	;	8=orange	9=brown		a=lightred	b=darkgrey
-   238  065c 3303540727045505   	!byte $33,$03,$54,$07,$27,$04,$55,$05	;	c=grey		d=litegreen	e=lightblue	f=lightgrey
-   239                          PaletteDataEnd:
-   240                          ; ******************************************** TEST ***********************************************
-   241                          ; test code binary
-   242                          !zone test
-   243                          TestCode:
-   244  0664 a2fe9aa2a98600a2...!binary "test.bin"
-   245                          ; ******************************************** FONT ***********************************************
-   246                          ; font 256 chars 6x8
-   247                          !zone font
-   248                          FontData:
-   249  0a39 1824545458201c00...!binary "c64-6x8.fon"
+     9                          
+    10                          ; **************************************** BASIC LOADER *******************************************
+    11                          !initmem FILL
+    12                          !zone basic
+    13                          *= $0401
+    14  0401 0c040a009e203130...!byte $0c,$04,$0a,$00,$9e,$20,$31,$30,$33,$38,$00,$00,$00	; 10 SYS 1038
+    15                          ; ***************************************** ZONE MAIN *********************************************
+    16                          !zone main
+    17                          *= $040e
+    18                          ; main code
+    19  040e 78                 	sei
+    20  040f 20b804             	jsr VdpInit			; init VDP
+    21  0412 204f05             	jsr VdpClear			; clear screen
+    22  0415 204405             	jsr VdpOn			; switch display on
+    23                          ; screen
+    24  0418 a9ac8504a9058505   	+st16i pointer, S_Title		; string address
+    25  0420 a000               	ldy #0				; line in .y
+    26  0422 a200               	ldx #0				; column in .x
+    27  0424 207505             	jsr VdpText			; write string
+    28  0427 a9cf8504a9058505   	+st16i pointer, S_Rams
+    29  042f a002               	ldy #2
+    30  0431 a200               	ldx #0
+    31  0433 207505             	jsr VdpText
+    32  0436 a90f8504a9068505   	+st16i pointer, S_Tests
+    33  043e a016               	ldy #22
+    34  0440 a200               	ldx #0
+    35  0442 207505             	jsr VdpText
+    36                          	
+    37  0445 a004               	ldy #4
+    38  0447 8403               	sty counter			; bank line
+    39  0449 a9f48504a9058505   wbnklp:	+st16i pointer, S_Bank		; string address
+    40  0451 a403               	ldy counter			; line
+    41  0453 a200               	ldx #0				; column
+    42  0455 207505             	jsr VdpText
+    43  0458 a503               	lda counter 
+    44  045a 18                 	clc
+    45  045b 692c               	adc #'0'-4			; calc screencode (-line)
+    46  045d c93a               	cmp #'9'+1
+    47  045f 9003               	bcc wbnkno			; 0-9 -> skip
+    48  0461 18                 	clc
+    49  0462 6907               	adc #7				; a-f
+    50  0464 8d0d06             wbnkno:	sta S_No			; store in dummy string
+    51  0467 a403               	ldy counter
+    52  0469 a205               	ldx #5				; column left
+    53  046b a90d8504a9068505   	+st16i pointer, S_No		; Dummy string address
+    54  0473 207505             	jsr VdpText
+    55  0476 a403               	ldy counter
+    56  0478 a219               	ldx #5+20			; column right
+    57  047a a90d8504a9068505   	+st16i pointer, S_No
+    58  0482 207505             	jsr VdpText
+    59  0485 e603               	inc counter
+    60  0487 a503               	lda counter
+    61  0489 c914               	cmp #4+16			; last bank?
+    62  048b d0bc               	bne wbnklp			; ..no -> next line
+    63                          ; copy TESTCODE
+    64  048d a964               	lda #<TestCode			; testcode source
+    65  048f 8500               	sta source_pointer
+    66  0491 a906               	lda #>TestCode
+    67  0493 8501               	sta source_pointer+1
+    68  0495 a906               	lda #<TESTCODE			; target
+    69  0497 8504               	sta pointer
+    70  0499 a900               	lda #>TESTCODE
+    71  049b 8505               	sta pointer+1
+    72  049d a000               	ldy #0
+    73                          	
+    74  049f b100               copylp:	lda (source_pointer),y
+    75  04a1 9104               	sta (pointer),y
+    76  04a3 c8                 	iny
+    77  04a4 d0f9               	bne copylp
+    78  04a6 e601               	inc source_pointer+1
+    79  04a8 e605               	inc pointer+1
+    80  04aa a505               	lda pointer+1
+    81  04ac c904               	cmp #$04			; reached basic start?
+    82  04ae d0ef               	bne copylp			; no.. copy next page
+    83                          
+    84                          ; disable ROM
+    85  04b0 a9dc               	lda  #%11011100         ; via2: ca2 low, cb2 low, ca1 neg,cb1 pos
+    86  04b2 8d4cde             	sta  via2+pcr		;   MMU: ca2+cb2 = ROM disabled, ca1 = restore key
+    87                          
+    88  04b5 4c0600             	jmp TESTCODE
+    89                          ; *********************************** ZONE VDP SUBROUTINES ****************************************
+    90                          !zone vdp_subroutines
+    91                          ; init vdp
+    92  04b8 a900               VdpInit:lda #0
+    93  04ba aa                 	tax
+    94  04bb 8d01dca9918d01dc   	+VdpSetReg 17			; write VDP regs fast indirect
+    95  04c3 ea                 	+VdpWait WAIT23,7-1
+    96  04c4 bd3506             vinilp:	lda VdpInitData,x
+    97  04c7 8d03dc             	sta VDPIndirect
+    98  04ca e8                 	inx
+    99  04cb e00f               	cpx #VdpInitDataEnd-VdpInitData
+   100                          	+VdpWait WAIT23,14
+   101  04cd d0f5               	bne vinilp
+   102                          	
+   103  04cf a90d               	lda #VDPREG18
+   104                          	+VdpWait WAIT23,11-1
+   105  04d1 8d01dca9928d01dc   	+VdpSetReg 18			; set register 18 V/H display adjust L 7-1,0,f-8 R
+   106                          ; clear 16kB VRAM
+   107  04d9 a900               	lda #$00
+   108  04db aa                 	tax
+   109  04dc ea                 	+VdpWait WAIT23,7-1
+   110  04dd 8e01dc09408d01dc   	+VdpWriteAddress		; set VRAM write address to $aaxx = $0000, Bank Reg already 0
+   111                          	; .x still 0
+   112  04e5 8a                 	txa				; VRAM init value =$00
+   113  04e6 a040               	ldy #$40			; $40 pages to clear = 16kB
+   114  04e8 eaeaea             	+VdpWait WAITVRAM1,7-1
+   115  04eb 8d00dc             viramlp:sta VDPRamWrite
+   116  04ee e8                 	inx
+   117  04ef eaeaeaeaeaeaeaea   	+VdpWait WAITVRAM,9-1
+   118  04f7 d0f2               	bne viramlp
+   119  04f9 88                 	dey				; next page
+   120  04fa d0ef               	bne viramlp			; continue till finished
+   121                          	; .y already 0
+   122  04fc 98                 	tya				; .a=0
+   123                          	+VdpWait WAIT23,11-1	
+   124  04fd 8d01dca98e8d01dc   	+VdpSetReg 14			; set VRAM bank register to 0
+   125                          ; copy color palette
+   126                          	; .x.y already 0
+   127  0505 98                 	tya				; .a=0
+   128  0506 8d01dca9908d01dc   	+VdpSetReg 16			; set VDP register 16 = palette pointer to 0 
+   129  050e ea                 	+VdpWait WAIT23,7-1	
+   130  050f bd4406             vipallp:lda PaletteData,x		; load palette-color to write
+   131  0512 8d02dc             	sta VDPPalette
+   132  0515 e8                 	inx
+   133  0516 e020               	cpx #PaletteDataEnd-PaletteData	; finished ?
+   134                          	+VdpWait WAIT23,14	
+   135  0518 d0f5               	bne vipallp			; ..no -> next color
+   136                          ; copy font to pattern generator table
+   137  051a a908               	lda #>PatternTable
+   138  051c a200               	ldx #<PatternTable
+   139                          	+VdpWait WAIT23,13-1
+   140  051e 8e01dc09408d01dc   	+VdpWriteAddress		; set VRAM write address to $aaxx = PatternTable
+   141  0526 a9398504a90a8505   	+st16i pointer, FontData	; set pointer to fontdata 
+   142  052e a208               	ldx #FONTPAGES			; pages to copy
+   143                          	; .y already 0
+   144                          	+VdpWait WAITVRAM1,20
+   145  0530 b104               vifntlp:lda (pointer),y			; load data
+   146  0532 8d00dc             	sta VDPRamWrite
+   147  0535 c8                 	iny
+   148  0536 eaeaeaeaeaea       	+VdpWait WAITVRAM,13-1
+   149  053c d0f2               	bne vifntlp
+   150  053e e605               	inc pointer+1			; inc fontdata pointer hi
+   151  0540 ca                 	dex				; next page
+   152  0541 d0ed               	bne vifntlp			; continue till finished
+   153  0543 60                 	rts
+   154                          ; -------------------------------------------------------------------------------------------------
+   155                          ; enable screen
+   156  0544 a950               VdpOn:	lda # VDPREG1 | $40		; set mode reg 1 (M1+M2), bit#6 = 1 enables screen
+   157  0546 8d01dca9818d01dc   	+VdpSetReg 1
+   158  054e 60                 	rts
+   159                          ; -------------------------------------------------------------------------------------------------
+   160                          ; clear screen
+   161                          VdpClear:
+   162  054f a200               	ldx #<Screen
+   163  0551 a900               	lda #>Screen
+   164  0553 8e01dc09408d01dc   	+VdpWriteAddress		; set VRAM write address to $aaxx = Screen
+   165  055b a2c0               	ldx #<(ROWS*COLS)		; .y.x = bytes to clear
+   166  055d a003               	ldy #>(ROWS*COLS)
+   167  055f a920               	lda #' '			; space
+   168  0561 eaea               	+VdpWait WAITVRAM1,9-1
+   169  0563 8d00dc             vclrlp:	sta VDPRamWrite
+   170  0566 ca                 	dex				; dec lo
+   171  0567 eaeaeaeaeaeaeaea   	+VdpWait WAITVRAM,8
+   172  056f d0f2               	bne vclrlp
+   173  0571 88                 	dey				; dec hi
+   174  0572 10ef               	bpl vclrlp			; continue till finished
+   175  0574 60                 	rts
+   176                          ; -------------------------------------------------------------------------------------------------
+   177                          ; copy string=pointer to column x, row y
+   178                          VdpText:
+   179  0575 8602               	stx temp			; safe column
+   180  0577 a900               	lda #<Screen			; .x.a = screen table base
+   181  0579 a200               	ldx #>Screen
+   182  057b c000               vtrowlp:cpy #0
+   183  057d f009               	beq vtcols			; line calc finished
+   184  057f 88                 	dey
+   185  0580 18                 	clc
+   186  0581 6928               	adc #COLS			; add line columns
+   187  0583 90f6               	bcc vtrowlp			; next line
+   188  0585 e8                 	inx
+   189  0586 b0f3               	bcs vtrowlp			; always next line
+   190  0588 18                 vtcols:	clc
+   191  0589 6502               	adc temp			; add column
+   192  058b 9001               	bcc vtadr			; no carry
+   193  058d e8                 	inx				; inc hi
+   194  058e 8602               vtadr:	stx temp			; exchange .x.a
+   195  0590 aa                 	tax
+   196  0591 a502               	lda temp
+   197  0593 8e01dc09408d01dc   	+VdpWriteAddress
+   198                          	+VdpWait WAITVRAM1,12
+   199  059b b104               vtwrite:lda (pointer),y			; get char
+   200  059d c9ff               	cmp #V_NULL			; end of string?
+   201  059f f00a               	beq vtexit			; ..yes -> exit
+   202  05a1 8d00dc             	sta VDPRamWrite
+   203  05a4 eaeaeaea           	+VdpWait WAITVRAM,17-1
+   204  05a8 c8                 	iny				; next character from string
+   205  05a9 d0f0               	bne vtwrite
+   206  05ab 60                 vtexit	rts
+   207                          ; ****************************************** ZONE DATA ********************************************
+   208                          !zone data
+   209  05ac 4c43323536205201...S_Title	!scr "LC256 Ramtest v.1.1 (c) 2024 Vossi", V_NULL
+   210  05cf 52414d3020283030...S_Rams	!scr "RAM0 (0000-7FFF)    RAM1 (8000-FFFF)", V_NULL
+   211  05f4 42010e0b20202020...S_Bank	!scr "Bank                Bank", V_NULL
+   212  060d 30ff               S_No	!scr "0", V_NULL		; Dummy Bank no
+   213  060f 540513142012150e...S_Tests	!scr "Test runs in KB0, skips I/O DC00-DFFF", V_NULL
+   214                          ; -------------------------------------------------------------------------------------------------
+   215                          VdpInitData:				; text mode 1 40x24
+   216  0635 0010001f013f0316...!byte $00,VDPREG1,$00,$1f,$01,$3f,$03,COLOR*16+BGRCOLOR,$08,VDPREG9,$00,$00,$00,$f0,$00
+   217                          	; reg  0: $00 mode control 1: text mode 1 (bit#1-3 = M3 - M5)
+   218                          	; reg  1: $10 mode control 2: bit#1 16x16 sprites, bit#3-4 = M2-M1, #6 =1: display enable)
+   219                          	; reg  2: $00 name (screen) table base address $0000 ( * $100)
+   220                          	; reg  3: $1f color table base address $0600 ( * $40 + bit#0-2 = 1)
+   221                          	; reg  4: $01 pattern (character) generator table base address $0800 (* $800)
+   222                          	; reg  5: $3f sprite attribute table base address $1e00 (* $80 - bit#0+1 = 1)
+   223                          	; reg  6: $03 sprite pattern (data) generator base address = $1800 (* $800)
+   224                          	; reg  7: $60 text/overscan-backdrop color
+   225                          	; reg  8: $08 bit#3 = 1: 64k VRAM chips, bit#1 = 0 sprites disable, bit#5 0=transparent
+   226                          	; reg  9: $80 bit#1 = NTSC/PAL, #2 = EVEN/ODD, #3 = interlace, #7 = 192/212 lines
+   227                          	; reg 10: $00 color table base address $0000 bit#0-2 = A14-A16
+   228                          	; reg 11: $00 sprite attribute table base address bit#0-1 = A15-A16
+   229                          	; reg 12: $00 text/background blink color
+   230                          	; reg 13: $f0 blink periods ON/OFF - f0 = blinking off
+   231                          	; reg 14: $00 VRAM write addresss bit#0-2 = A14-A16
+   232                          VdpInitDataEnd:
+   233                          ; -------------------------------------------------------------------------------------------------
+   234                          ; ***** Color Palette - 16 colors, 2 byte/color: RB, 0G each 3bit -> C64 VICII-colors *****
+   235                          PaletteData:
+   236  0644 0000770770011706   	!byte $00,$00,$77,$07,$70,$01,$17,$06	;	0=black		1=white		2=red		3=cyan
+   237  064c 5602320606027207   	!byte $56,$02,$32,$06,$06,$02,$72,$07	;	4=violet	5=green		6=blue		7=yellow
+   238  0654 7003600272031101   	!byte $70,$03,$60,$02,$72,$03,$11,$01	;	8=orange	9=brown		a=lightred	b=darkgrey
+   239  065c 3303540727045505   	!byte $33,$03,$54,$07,$27,$04,$55,$05	;	c=grey		d=litegreen	e=lightblue	f=lightgrey
+   240                          PaletteDataEnd:
+   241                          ; ******************************************** TEST ***********************************************
+   242                          ; test code binary
+   243                          !zone test
+   244                          TestCode:
+   245  0664 a2fe9aa2a98600a2...!binary "test.bin"
+   246                          ; ******************************************** FONT ***********************************************
+   247                          ; font 256 chars 6x8
+   248                          !zone font
+   249                          FontData:
+   250  0a39 1824545458201c00...!binary "c64-6x8.fon"

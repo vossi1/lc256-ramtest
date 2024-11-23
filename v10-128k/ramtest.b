@@ -1,7 +1,6 @@
 ; LC256 Ramtest
 ; for ACME assembling by Vossi 11/2024, last update 11/2024
-; v1.0 initial
-; v1.1 added pcb v.1.0 128K-version in test.b
+; v1.0 initial - special pcb v.1.0 128K-version
 !cpu 65c02	; 6502, 6510, 65c02, 65816
 !ct scr		; Standard text/char conversion table -> pet = petscii
 !to "ramtest", cbm
@@ -58,7 +57,7 @@ wbnkno:	sta S_No			; store in dummy string
 	jsr VdpText
 	inc counter
 	lda counter
-	cmp #4+16			; last bank?
+	cmp #4+4			; last bank?
 	bne wbnklp			; ..no -> next line
 ; copy TESTCODE
 	lda #<TestCode			; testcode source
@@ -206,7 +205,7 @@ vtwrite:lda (pointer),y			; get char
 vtexit	rts
 ; ****************************************** ZONE DATA ********************************************
 !zone data
-S_Title	!scr "LC256 Ramtest v.1.1 (c) 2024 Vossi", V_NULL
+S_Title	!scr "LC256 Ramtest v.1.0 (c) 2024 Vossi", V_NULL
 S_Rams	!scr "RAM0 (0000-7FFF)    RAM1 (8000-FFFF)", V_NULL
 S_Bank	!scr "Bank                Bank", V_NULL
 S_No	!scr "0", V_NULL		; Dummy Bank no

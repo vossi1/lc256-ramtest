@@ -1,7 +1,6 @@
 ; LC256 Ramtest Defines
 ; for ACME assembling by Vossi 11/2024, last update 11/2024
 ; v1.0 initial
-; v1.1 added pcb v.1.0 128K-version in test.b
 ; switches
 CLOCK = 4		; CPU clock in MHz for VDP waits
 ; vdp
@@ -43,7 +42,6 @@ PatternTable		= $0800		; font
 Screen			= $0000
 ; 6522 VIA2 - MMU, IEC, USB RXF/TXE, Restore
 	prb	= $0		; Port reg b
-	ddrb	= $2		; Direction reg b
 	pcr	= $c		; peripheral control register
 !addr	via2	= $de40
 !addr	mmu	= via2+prb	; VIA2 port B MMU register
